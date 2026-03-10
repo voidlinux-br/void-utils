@@ -2,7 +2,7 @@
 # Maintainer  : Vilmar Catafesta <vcatafesta@gmail.com>
 
 pkgname=void-utils
-pkgdesc="Utilitários do sistema essencias para uso diário no Void Linux"
+pkgdesc="Utilitários do sistema essenciais para uso diário no Void Linux"
 pkgver=$(date +%Y%m%d)
 pkgrel=$(date +%H%M)
 arch=('any')
