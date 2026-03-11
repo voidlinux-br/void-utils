@@ -48,44 +48,44 @@ YELLOW='\033[1;33m'
 BLUE='\033[1;34m'
 RESET='\033[0m'
 
-msg()  { echo -e "${GREEN}✔${RESET} $*"; }
+msg() { echo -e "${GREEN}✔${RESET} $*"; }
 warn() { echo -e "${YELLOW}⚠${RESET} $*"; }
-err()  { echo -e "${RED}✘${RESET} $*" >&2; }
+err() { echo -e "${RED}✘${RESET} $*" >&2; }
 info() { echo -e "${BLUE}➜${RESET} $*"; }
 
 # ─────────────────────────────
 # Root check
 # ─────────────────────────────
 sh_checkroot() {
-  ((EUID == 0)) && return 0
+	((EUID == 0)) && return 0
 
-  if command -v sudo >/dev/null 2>&1; then
-    exec sudo bash "$0" "$@"
-  elif command -v su >/dev/null 2>&1; then
-    exec su -c "$0 $*"
-  else
-    err "precisa ser root (sem sudo/su disponível)"
-    exit 1
-  fi
+	if command -v sudo >/dev/null 2>&1; then
+		exec sudo bash "$0" "$@"
+	elif command -v su >/dev/null 2>&1; then
+		exec su -c "$0 $*"
+	else
+		err "precisa ser root (sem sudo/su disponível)"
+		exit 1
+	fi
 }
 
 usage() {
-  echo -e "${BLUE}vservice${RESET} — gerenciador simples de serviços (${YELLOW}runit${RESET})"
-  echo
-  echo -e "${GREEN}Uso:${RESET}"
-  echo -e "  ${BLUE}vservice${RESET} ${YELLOW}{install|enable|disable|remove|rm||start|stop|st|restart|status|list}${RESET} ${GREEN}[service]${RESET}"
-  echo
-  echo -e "${GREEN}Comandos:${RESET}"
-  echo -e "  ${YELLOW}enable${RESET}   — habilita o serviço (cria link em ${BLUE}/var/service${RESET})"
-  echo -e "  ${YELLOW}disable${RESET}  — para o serviço sem remover"
-  echo -e "  ${YELLOW}remove${RESET}   — para e remove o serviço"
-  echo -e "  ${YELLOW}start${RESET}    — inicia um serviço já habilitado"
-  echo -e "  ${YELLOW}stop${RESET}     — para o serviço"
-  echo -e "  ${YELLOW}restart${RESET}  — reinicia o serviço"
-  echo -e "  ${YELLOW}status${RESET}   — mostra o status do serviço"
-  echo -e "  ${YELLOW}list${RESET}     — lista todos os serviços ativos"
-  echo
-  exit 1
+	echo -e "${BLUE}vservice${RESET} — gerenciador simples de serviços (${YELLOW}runit${RESET})"
+	echo
+	echo -e "${GREEN}Uso:${RESET}"
+	echo -e "  ${BLUE}vservice${RESET} ${YELLOW}{add|install|enable|disable|remove|rm||start|stop|st|restart|status|list}${RESET} ${GREEN}[service]${RESET}"
+	echo
+	echo -e "${GREEN}Comandos:${RESET}"
+	echo -e "  ${YELLOW}enable${RESET}   — habilita o serviço (cria link em ${BLUE}/var/service${RESET})"
+	echo -e "  ${YELLOW}disable${RESET}  — para o serviço sem remover"
+	echo -e "  ${YELLOW}remove${RESET}   — para e remove o serviço"
+	echo -e "  ${YELLOW}start${RESET}    — inicia um serviço já habilitado"
+	echo -e "  ${YELLOW}stop${RESET}     — para o serviço"
+	echo -e "  ${YELLOW}restart${RESET}  — reinicia o serviço"
+	echo -e "  ${YELLOW}status${RESET}   — mostra o status do serviço"
+	echo -e "  ${YELLOW}list${RESET}     — lista todos os serviços ativos"
+	echo
+	exit 1
 }
 
 # ─────────────────────────────
@@ -102,87 +102,93 @@ SV_PATH="$SV_DIR/$SERVICE"
 ACTIVE_PATH="$ACTIVE_DIR/$SERVICE"
 
 check_service_exists() {
-  [[ -d "$SV_PATH" ]] || {
-    err "serviço '$SERVICE' não existe em $SV_DIR"
-    exit 1
-  }
+	[[ -d "$SV_PATH" ]] || {
+		err "serviço '$SERVICE' não existe em $SV_DIR"
+		exit 1
+	}
 }
 
 show_status() {
-  if command -v vsv >/dev/null; then
-    vsv | grep -i "$SERVICE"
-  else
-    sv status "$SERVICE"
-  fi
+	if command -v vsv >/dev/null; then
+		vsv | grep -i "$SERVICE"
+	else
+		sv status "$SERVICE"
+	fi
 }
 
 # ─────────────────────────────
 # Ações
 # ─────────────────────────────
 case "$ACTION" in
-enable|install)
-  check_service_exists
+add | enable | install)
+	check_service_exists
 
-  if [[ -L "$ACTIVE_PATH" ]]; then
-    warn "serviço '$SERVICE' já está habilitado"
-  else
-    ln -s "$SV_PATH" "$ACTIVE_PATH"
-    msg "serviço '$SERVICE' habilitado"
-  fi
+	if [[ -L "$ACTIVE_PATH" ]]; then
+		warn "serviço '$SERVICE' já está habilitado"
+	else
+		ln -s "$SV_PATH" "$ACTIVE_PATH"
+		msg "serviço '$SERVICE' habilitado"
+	fi
 
-  sleep 3
-  show_status
-;;
+	sleep 7
+	show_status
+	;;
 
 disable)
-  if [[ -L "$ACTIVE_PATH" ]]; then
-    sv stop "$SERVICE"
-    msg "serviço '$SERVICE' parado"
-  else
-    warn "serviço '$SERVICE' não está habilitado"
-  fi
-;;
+	if [[ -L "$ACTIVE_PATH" ]]; then
+		sv stop "$SERVICE"
+		msg "serviço '$SERVICE' parado"
+	else
+		warn "serviço '$SERVICE' não está habilitado"
+	fi
+	;;
 
-remove|rm)
-  if [[ -L "$ACTIVE_PATH" ]]; then
-    sv stop "$SERVICE"
-    rm -f "$ACTIVE_PATH"
-    msg "serviço '$SERVICE' removido"
-  else
-    warn "serviço '$SERVICE' não está habilitado"
-  fi
-;;
+remove | rm)
+	if [[ -L "$ACTIVE_PATH" ]]; then
+		sv stop "$SERVICE"
+		rm -f "$ACTIVE_PATH"
+		msg "serviço '$SERVICE' removido"
+	else
+		warn "serviço '$SERVICE' não está habilitado"
+	fi
+	;;
 
-start|st)
-  check_service_exists
+start | st | up)
+	check_service_exists
 
-  if [[ ! -L "$ACTIVE_PATH" ]]; then
-    err "serviço '$SERVICE' existe mas NÃO está habilitado"
-    err "use: vservice enable $SERVICE"
-    exit 1
-  fi
+	if [[ ! -L "$ACTIVE_PATH" ]]; then
+		err "serviço '$SERVICE' existe mas NÃO está habilitado"
+		err "use: vservice enable $SERVICE"
+		exit 1
+	fi
 
-  info "sv start $SERVICE"
-  sv start "$SERVICE"
+	info "sv start $SERVICE"
+	sv start "$SERVICE"
 
-  sleep 3
-# sv status "$SERVICE"
-  show_status
-;;
+	sleep 7
+	# sv status "$SERVICE"
+	show_status
+	;;
 
-stop|restart|status)
-  check_service_exists
-  info "sv $ACTION $SERVICE"
-#  sv "$ACTION" "$SERVICE"
-  show_status
-;;
+stop | reload | restart | shutdown | force-stop | force-reload | force-restart | force-shutdown | try-restart)
+	check_service_exists
+	info "sv $ACTION $SERVICE"
+	sv "$ACTION" "$SERVICE"
+	show_status
+	;;
+
+status | up | down | once | pause | exit)
+	check_service_exists
+	info "sv $ACTION $SERVICE"
+	sv "$ACTION" "$SERVICE"
+	show_status
+	;;
 
 list)
-  command -v vsv >/dev/null && vsv || sv status /var/service/*
-;;
+	command -v vsv >/dev/null && vsv || sv status /var/service/*
+	;;
 
 *)
-  usage
-;;
+	usage
+	;;
 esac
-
