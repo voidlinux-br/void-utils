@@ -1,0 +1,227 @@
+#!/usr/bin/env bash
+
+LOG="/var/log/lvm-thin-vm.log"
+
+# -----------------------------
+# root check
+# -----------------------------
+if [[ $EUID -ne 0 ]]; then
+	exec sudo bash "$0" "$@"
+fi
+
+# -----------------------------
+# detectar thin pool
+# -----------------------------
+read VG POOL <<<$(lvs --noheadings -o vg_name,lv_name,lv_attr | awk '$3 ~ /^t/ {print $1,$2; exit}')
+
+if [[ -z "$VG" || -z "$POOL" ]]; then
+	echo "Nenhum thin pool encontrado."
+	exit 1
+fi
+
+# -----------------------------
+# log
+# -----------------------------
+log() {
+	printf "[%s] %s\n" "$(date '+%F %T')" "$1" >>"$LOG"
+}
+
+# -----------------------------
+# pool info
+# -----------------------------
+pool_info() {
+	SIZE=$(lvs --noheadings -o lv_size "$VG/$POOL" | xargs)
+	USED=$(lvs --noheadings -o data_percent "$VG/$POOL" | xargs)
+	echo "Pool $VG/$POOL   Size: $SIZE   Used: $USED%"
+}
+
+# -----------------------------
+# listar VMs
+# -----------------------------
+list_vms_menu() {
+
+	lvs --noheadings -o lv_name,lv_size,data_percent,origin,lv_attr "$VG" |
+		awk '$5 ~ /^V/ {
+printf "%s \"%s %s%% %s\"\n",$1,$2,($3==""?"0":$3),($4==""?"":("origin=" $4))
+}'
+
+}
+
+# -----------------------------
+# selecionar VM
+# -----------------------------
+select_vm() {
+
+  MENU=()
+
+  while read -r NAME SIZE ATTR; do
+    [[ $ATTR != V* ]] && continue
+    MENU+=("$NAME" "$SIZE")
+  done < <(lvs --noheadings -o lv_name,lv_size,lv_attr "$VG")
+
+  [[ ${#MENU[@]} -eq 0 ]] && {
+    dialog --msgbox "Nenhuma VM encontrada." 6 40
+    return
+  }
+
+  VM=$(dialog --stdout --menu "Selecionar VM" 20 60 10 "${MENU[@]}")
+  RET=$?
+
+  [[ $RET -ne 0 ]] && return
+
+  echo "$VM"
+}
+
+# -----------------------------
+# criar VM
+# -----------------------------
+create_vm() {
+
+	NAME=$(dialog --stdout --inputbox "Nome da VM" 8 40)
+	[ $? -ne 0 ] && return
+
+	SIZE=$(dialog --stdout --inputbox "Tamanho (ex: 32G)" 8 40)
+	[ $? -ne 0 ] && return
+
+	if lvs "$VG/$NAME" &>/dev/null; then
+		dialog --msgbox "VM já existe!" 6 40
+		return
+	fi
+
+	lvcreate -V "$SIZE" -T "$VG/$POOL" -n "$NAME"
+
+	log "create vm $NAME"
+
+	dialog --msgbox "VM criada: /dev/$VG/$NAME" 6 50
+}
+
+# -----------------------------
+# remover VM
+# -----------------------------
+remove_vm() {
+
+	VM=$(select_vm)
+	[ -z "$VM" ] && return
+
+	dialog --yesno "Remover VM $VM ?" 8 40 || return
+
+	lvremove -y "$VG/$VM"
+
+	log "remove vm $VM"
+
+	dialog --msgbox "VM removida" 6 30
+}
+
+# -----------------------------
+# snapshot
+# -----------------------------
+snapshot_vm() {
+
+	VM=$(select_vm)
+	[ -z "$VM" ] && return
+
+	SNAP=$(dialog --stdout --inputbox "Nome do snapshot" 8 40)
+	[ $? -ne 0 ] && return
+
+	lvcreate -s -n "$SNAP" "/dev/$VG/$VM"
+
+	log "snapshot $VM -> $SNAP"
+
+	dialog --msgbox "Snapshot criado" 6 30
+}
+
+# -----------------------------
+# clone
+# -----------------------------
+clone_vm() {
+
+	VM=$(select_vm)
+	[ -z "$VM" ] && return
+
+	NEW=$(dialog --stdout --inputbox "Nome da nova VM" 8 40)
+	[ $? -ne 0 ] && return
+
+	dialog --yesno "Clonar $VM -> $NEW ?" 8 40 || return
+
+	lvcreate -s -n "$NEW" "/dev/$VG/$VM"
+
+	log "clone $VM -> $NEW"
+
+	dialog --msgbox "Clone criado" 6 30
+}
+
+# -----------------------------
+# expandir VM
+# -----------------------------
+expand_vm() {
+
+	VM=$(select_vm)
+	[ -z "$VM" ] && return
+
+	ADD=$(dialog --stdout --inputbox "Adicionar tamanho (ex: +10G)" 8 40)
+	[ $? -ne 0 ] && return
+
+	lvextend -L "$ADD" "$VG/$VM"
+
+	log "extend $VM $ADD"
+
+	dialog --msgbox "Disco expandido" 6 30
+}
+
+# -----------------------------
+# status
+# -----------------------------
+status_screen() {
+
+	dialog --msgbox "\
+$(pool_info)
+
+VMs
+--------------------------------
+$(lvs --noheadings -o lv_name,lv_size,data_percent,origin "$VG" | awk '{print}')
+
+" 20 70
+}
+
+# -----------------------------
+# menu principal
+# -----------------------------
+while true; do
+
+	INFO=$(pool_info)
+
+	OPTION=$(dialog --clear --stdout \
+		--backtitle "LVM Thin VM Manager" \
+		--title "Gerenciador LVM Thin" \
+		--menu "$INFO
+
+Escolha:" 18 60 10 \
+		1 "Criar VM" \
+		2 "Remover VM" \
+		3 "Criar Snapshot" \
+		4 "Clonar VM" \
+		5 "Expandir disco VM" \
+		6 "Status" \
+		0 "Sair")
+
+	RET=$?
+
+	[ $RET -ne 0 ] && {
+		clear
+		exit
+	}
+
+	case "$OPTION" in
+	1) create_vm ;;
+	2) remove_vm ;;
+	3) snapshot_vm ;;
+	4) clone_vm ;;
+	5) expand_vm ;;
+	6) status_screen ;;
+	0)
+		clear
+		exit
+		;;
+	esac
+
+done
