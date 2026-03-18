@@ -6,7 +6,7 @@
 #  Otimização automática para máquinas com pouca RAM
 #  Created: qua 11 mar 2026 11:53:16 -04
 #  Altered: qua 11 mar 2026 11:53:16 -04
-#  Updated: qua 11 mar 2026 11:53:16 -04
+#  Updated: qua 18 mar 2026 12:27:36 -04
 #
 #  Copyright (c) 2019-2026, Vilmar Catafesta <vcatafesta@gmail.com>
 #  Copyright (c) 2019-2026, ChiliLinux Development Team <https://chililinux.com> <https://github.com/chililinux>
@@ -46,7 +46,7 @@ shopt -s extglob
 
 #system
 declare APP="${0##*/}"
-declare _VERSION_="0.03.11-20260311"
+declare _VERSION_="0.03.18-20260318"
 declare APPDESC="$APP - Wraper for "
 declare distro="$(uname -n)"
 declare -A PACKAGEDEP=(
@@ -528,6 +528,11 @@ detect_ram() {
 	msg "RAM detectada: ${ram_gb} GB"
 }
 
+detect_fs() {
+	root_fs=$(stat -f -c %T /)
+	msg "Filesystem raiz: $root_fs"
+}
+
 calculate_swap() {
 	if ((ram_gb <= 2)); then
 		swap_gb=6
@@ -562,10 +567,19 @@ remove_zram() {
 create_swapfile() {
 	swapoff /swapfile 2>/dev/null
 	rm -f /swapfile
+
 	msg "Criando swapfile ${swap_gb}G..."
-	if ! fallocate -l ${swap_gb}G /swapfile 2>/dev/null; then
-		dd if=/dev/zero of=/swapfile bs=1M count=$((swap_gb * 1024))
+
+	if [[ "$root_fs" == "btrfs" ]]; then
+		msg "BTRFS detectado: desativando COW para swapfile"
+		truncate -s 0 /swapfile
+		chattr +C /swapfile
 	fi
+
+	if ! fallocate -l ${swap_gb}G /swapfile 2>/dev/null; then
+		dd if=/dev/zero of=/swapfile bs=1M count=$((swap_gb * 1024)) status=progress
+	fi
+
 	chmod 600 /swapfile
 	mkswap /swapfile
 	changed=true
