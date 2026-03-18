@@ -612,7 +612,10 @@ configure_sysctl() {
 	else
 		file=/etc/sysctl.d/99-voidbr-memory-tuning.conf
 	fi
+
 	msg "Configurando parâmetros de memória..."
+  mkdir -p /etc/sysctl.d/
+
 	if [ ! -f "$file" ]; then
 		cat <<EOF > "$file"
 vm.swappiness=180
@@ -765,6 +768,7 @@ summary() {
 main() {
 	check_root
 	detect_init
+	detect_fs
 	cleanup_old_voidbr_runit
 	cleanup_old_chili_systemd
 	detect_ram
