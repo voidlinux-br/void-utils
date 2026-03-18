@@ -571,17 +571,30 @@ create_swapfile() {
 	msg "Criando swapfile ${swap_gb}G..."
 
 	if [[ "$root_fs" == "btrfs" ]]; then
-		msg "BTRFS detectado: desativando COW para swapfile"
-		truncate -s 0 /swapfile
-		chattr +C /swapfile
+		if command -v btrfs >/dev/null && btrfs filesystem mkswapfile --help >/dev/null 2>&1; then
+			msg "BTRFS detectado: usando mkswapfile nativo"
+			btrfs filesystem mkswapfile --size ${swap_gb}g /swapfile
+		else
+			msg "BTRFS detectado: criando swapfile manual (NoCOW)"
+			truncate -s 0 /swapfile
+			chattr +C /swapfile
+
+			if ! fallocate -l ${swap_gb}G /swapfile 2>/dev/null; then
+				dd if=/dev/zero of=/swapfile bs=1M count=$((swap_gb * 1024)) status=progress
+			fi
+
+			chmod 600 /swapfile
+			mkswap /swapfile
+		fi
+	else
+		if ! fallocate -l ${swap_gb}G /swapfile 2>/dev/null; then
+			dd if=/dev/zero of=/swapfile bs=1M count=$((swap_gb * 1024)) status=progress
+		fi
+
+		chmod 600 /swapfile
+		mkswap /swapfile
 	fi
 
-	if ! fallocate -l ${swap_gb}G /swapfile 2>/dev/null; then
-		dd if=/dev/zero of=/swapfile bs=1M count=$((swap_gb * 1024)) status=progress
-	fi
-
-	chmod 600 /swapfile
-	mkswap /swapfile
 	changed=true
 }
 
